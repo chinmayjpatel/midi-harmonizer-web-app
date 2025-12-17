@@ -1,6 +1,6 @@
 import mido
 import numpy as np
-from music21 import converter, note, chord, stream, key
+from music21 import converter, note, chord, stream, key, instrument
 import pretty_midi
 import tensorflow as tf
 from tensorflow import keras
@@ -86,7 +86,7 @@ class MIDIHarmonizer:
     
     def harmonize(self, input_path, output_path):
         """
-        Main harmonization function
+        Main harmonization function with improved timing and voice leading
         """
         # Load MIDI file
         midi_stream = converter.parse(input_path)
@@ -97,8 +97,13 @@ class MIDIHarmonizer:
         
         # Create new streams for harmony and bass
         harmony_stream = stream.Part()
+        harmony_stream.insert(0, detected_key)
+        
         bass_stream = stream.Part()
+        bass_stream.insert(0, detected_key)
+        
         melody_stream = stream.Part()
+        melody_stream.insert(0, detected_key)
         
         # Extract melody (assume first part or highest notes)
         parts = midi_stream.parts
@@ -106,6 +111,10 @@ class MIDIHarmonizer:
             original_melody = parts[0]
         else:
             original_melody = midi_stream.flatten()
+        
+        # Track previous harmony note for smooth voice leading
+        prev_harmony_pitch = None
+        last_bass_offset = -4.0  # Track when we last added bass
         
         # Process each note in the melody
         for element in original_melody.flatten().notesAndRests:
@@ -116,29 +125,58 @@ class MIDIHarmonizer:
                 melody_note.offset = element.offset
                 melody_stream.append(melody_note)
                 
-                # Generate harmony (third above)
-                harmony_note = self.generate_harmony_note(element.pitch.nameWithOctave, detected_key, interval=3)
+                # Generate harmony (third below for better sound)
+                harmony_note = self.generate_harmony_note(
+                    element.pitch.nameWithOctave, 
+                    detected_key, 
+                    interval=3
+                )
+                
                 if harmony_note:
+                    # Match duration exactly
                     harmony_note.duration = element.duration
                     harmony_note.offset = element.offset
+                    
+                    # Smooth voice leading - keep harmony notes close together
+                    if prev_harmony_pitch:
+                        # If new harmony is too far, adjust octave
+                        interval_distance = abs(harmony_note.pitch.midi - prev_harmony_pitch.midi)
+                        if interval_distance > 7:  # More than a fifth
+                            if harmony_note.pitch.midi > prev_harmony_pitch.midi:
+                                harmony_note.octave -= 1
+                            else:
+                                harmony_note.octave += 1
+                    
                     harmony_stream.append(harmony_note)
+                    prev_harmony_pitch = harmony_note.pitch
                 
-                # Generate bass (simplified - one per measure)
-                if element.offset % 4.0 == 0:  # On downbeats
+                # Generate bass on strong beats (every 2 quarter notes)
+                current_beat = element.offset % 4.0
+                if current_beat == 0 or (element.offset - last_bass_offset) >= 2.0:
                     bass_note = self.generate_bass_note([element], detected_key, element.offset)
-                    bass_note.duration.quarterLength = 4.0  # Whole note
+                    
+                    # Calculate duration until next bass note
+                    duration_to_next = 2.0  # Default: half note
+                    bass_note.duration.quarterLength = duration_to_next
                     bass_note.offset = element.offset
                     bass_stream.append(bass_note)
+                    last_bass_offset = element.offset
             
             elif isinstance(element, note.Rest):
-                # Copy rests to all parts
+                # Copy rests to melody only
                 rest = note.Rest()
                 rest.duration = element.duration
                 rest.offset = element.offset
                 melody_stream.append(rest)
         
-        # Combine all parts
+        # Combine all parts with proper MIDI channels
         score = stream.Score()
+        
+        # Set instruments for each part
+        melody_stream.insert(0, instrument.Piano())
+        harmony_stream.insert(0, instrument.Piano())
+        bass_stream.insert(0, instrument.Piano())
+        
         score.insert(0, melody_stream)
         score.insert(0, harmony_stream)
         score.insert(0, bass_stream)

@@ -57,7 +57,7 @@ function App() {
 
   const handleDownload = () => {
     if (harmonizedFile) {
-      window.open(`${API_URL}${harmonizedFile.download_url}`, '_blank');
+      window.open(`http://localhost:5000${harmonizedFile.download_url}`, '_blank');
     }
   };
 

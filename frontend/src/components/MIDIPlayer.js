@@ -1,24 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import * as Tone from 'tone';
+import React, { useState } from 'react';
 import './MIDIPlayer.css';
 
 function MIDIPlayer({ filename }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration] = useState(0);
 
-  useEffect(() => {
-    // Initialize Tone.js synth
-    const synth = new Tone.PolySynth(Tone.Synth).toDestination();
-    
-    return () => {
-      synth.dispose();
-    };
-  }, []);
-
-  const handlePlay = async () => {
+  const handlePlay = () => {
     if (!isPlaying) {
-      await Tone.start();
       setIsPlaying(true);
       
       // TODO: Load and play MIDI file using Tone.js
@@ -34,13 +23,13 @@ function MIDIPlayer({ filename }) {
 
   const handlePause = () => {
     setIsPlaying(false);
-    Tone.Transport.pause();
+    // TODO: Implement pause functionality with Tone.js
   };
 
   const handleStop = () => {
     setIsPlaying(false);
     setCurrentTime(0);
-    Tone.Transport.stop();
+    // TODO: Implement stop functionality with Tone.js
   };
 
   const formatTime = (seconds) => {
